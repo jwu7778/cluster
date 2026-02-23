@@ -17,7 +17,22 @@
   apt_repository:
     repo: ppa:graphics-drivers/ppa
     state: present
-  when: "'WSL' not in ansible_kernel and 'Microsoft' not in ansible_kernel"
+  when:
+    - "'WSL' not in ansible_facts['kernel']"
+    - "'Microsoft' not in ansible_facts['kernel']"
+
+- name: Purge Broken NVIDIA Driver 575 (Ubuntu Desktop)
+  apt:
+    name:
+      - nvidia-driver-575
+      - nvidia-dkms-575
+      - nvidia-utils-575
+    state: absent
+    purge: yes
+    autoremove: yes
+  when:
+    - "'WSL' not in ansible_facts['kernel']"
+    - "'Microsoft' not in ansible_facts['kernel']"
 
 - name: Install NVIDIA Driver 535 (Stable LTS)
   apt:
@@ -25,7 +40,9 @@
       - nvidia-driver-535
       - nvidia-utils-535
     state: present
-  when: "'WSL' not in ansible_kernel and 'Microsoft' not in ansible_kernel"
+  when:
+    - "'WSL' not in ansible_facts['kernel']"
+    - "'Microsoft' not in ansible_facts['kernel']"
 
 - name: Add NVIDIA GPG Key
   shell: |
@@ -69,7 +86,8 @@
 - name: Execute WSL GPU Fix Script
   script: "{{ playbook_dir }}/../scripts/check_gpu_wsl.sh"
   register: wsl_script_output
-  when: "'WSL' in ansible_kernel or 'Microsoft' in ansible_kernel or inventory_hostname in groups['worker']"
+  when:
+    - "'WSL' in ansible_facts['kernel'] or 'Microsoft' in ansible_facts['kernel'] or inventory_hostname in groups['worker']"
 
 - name: Display WSL Script Output
   debug:
