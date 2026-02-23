@@ -79,25 +79,32 @@ fi
 
 echo "=== PHASE 3: CONFIGURING RUNTIME ==="
 
-# Generate default config
+# Generate default config for system containerd
 sudo nvidia-ctk runtime configure --runtime=containerd
-
-# Apply WSL-specific fixes to config.toml if needed
-# Typically, nvidia-ctk handles this, but explicitly ensuring ldconfig path is safe.
-CONFIG_FILE="/etc/nvidia-container-runtime/config.toml"
-
-# Ensure specific WSL settings if they are not default
-# We can use a simple sed to ensure 'ldconfig' points to the right place if needed,
-# but usually standard config works if ld.so.conf is set (Phase 1).
-# We just restart containerd to pick up changes.
 sudo systemctl restart containerd || true
 
-# --- STEP 4: INSTALL K3S AGENT ---
+# --- STEP 4: INSTALL K3S AGENT & CONFIGURE FOR NVIDIA ---
 
 echo "=== PHASE 4: INSTALLING K3S AGENT ==="
 
-# We use the standard install script, pointing to the master
+# Install K3s Agent
 curl -sfL https://get.k3s.io | K3S_URL=$K3S_URL K3S_TOKEN=$K3S_TOKEN sh -
+
+echo "Configuring K3s to use NVIDIA runtime via config.toml.tmpl..."
+sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/
+
+# Create config.toml.tmpl to register nvidia runtime
+# Using runc v2
+cat <<EOF | sudo tee /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+[plugins.cri.containerd.runtimes.nvidia]
+  runtime_type = "io.containerd.runc.v2"
+[plugins.cri.containerd.runtimes.nvidia.options]
+  BinaryName = "/usr/bin/nvidia-container-runtime"
+  SystemdCgroup = true
+EOF
+
+echo "Restarting K3s Agent to apply runtime changes..."
+sudo systemctl restart k3s-agent
 
 echo "---------------------------------------------------"
 echo "Worker Installation Complete!"
