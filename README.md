@@ -12,13 +12,13 @@
 └── scripts/          # 安裝與輔助腳本
     ├── install_master.sh     # Ubuntu Desktop 安裝腳本
     ├── install_worker_wsl.sh # WSL Worker 安裝腳本
-    └── check_gpu_wsl.sh      # WSL GPU 修復邏輯
+    └── check_gpu_wsl.sh      # WSL GPU 檢查腳本
 ```
 
 ## 前置需求
 
-*   **Master 節點 (Ubuntu Desktop)**
-*   **Worker 節點 (Windows WSL2)**：已啟用 systemd (推薦)。
+*   **Master 節點 (Ubuntu Desktop)**: 必須先手動安裝好 NVIDIA 驅動 (建議 535+)，並確認 `nvidia-smi` 運作正常。
+*   **Worker 節點 (Windows WSL2)**: 必須先在 Windows 端安裝 NVIDIA 驅動，並確認 WSL 內可看到 `/dev/dxg`。
 
 ## 安裝步驟
 
@@ -32,48 +32,45 @@ sudo chmod +x scripts/*.sh
 ```
 
 此腳本會自動：
-1.  **移除** 不穩定的 NVIDIA 575 驅動。
-2.  **安裝** 穩定的 NVIDIA 535 驅動。
-3.  安裝 NVIDIA Container Toolkit。
-4.  安裝 K3s Master。
-5.  **輸出** 連線所需的 Token 與 URL。
+1.  **檢查** NVIDIA 驅動狀態 (不會重新安裝驅動)。
+2.  安裝 NVIDIA Container Toolkit (如果尚未安裝)。
+3.  配置 K3s Master (使用 Containerd Runtime)。
+4.  **輸出** 連線所需的 Token 與 URL。
 
 ### 2. Worker 節點 (WSL)
 
-在 WSL 終端機中，使用 Master 輸出的資訊設定環境變數，然後執行安裝：
+在 WSL 終端機中，執行安裝腳本：
 
 ```bash
-export K3S_URL=https://<MASTER_IP>:6443
-export K3S_TOKEN=<TOKEN_FROM_MASTER>
-
 sudo chmod +x scripts/*.sh
 ./scripts/install_worker_wsl.sh
 ```
 
-此腳本會自動：
-1.  執行 `check_gpu_wsl.sh` 修復 `/dev/dxg` 與 `LD_LIBRARY_PATH`。
+此腳本會互動式詢問 `K3S_URL` 與 `K3S_TOKEN`，並自動：
+1.  檢查並修復 WSL GPU 環境 (`/dev/dxg` 與 `ld.so.conf`)。
 2.  安裝 NVIDIA Container Toolkit。
-3.  加入 K3s 集群。
+3.  加入 K3s 集群 (Agent Mode)。
 
 ### 3. 部署監控服務 (K8s)
 
-回到 Master 節點執行：
+回到 Master 節點執行 (確保 K3s 已啟動)：
 
 ```bash
+# 部署後端 Service 與 DaemonSet
 kubectl apply -f k8s/backend-service.yaml
 kubectl apply -f k8s/gpu-monitor-daemonset.yaml
 ```
 
-### 4. 啟動應用程式
+### 4. 啟動應用程式 (開發模式)
 
-啟動後端：
+啟動後端 API：
 ```bash
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-啟動前端：
+啟動前端 Dashboard：
 ```bash
 cd frontend
 npm install
