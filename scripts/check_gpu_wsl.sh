@@ -37,6 +37,17 @@ else
     fi
 fi
 
+# Check LD_LIBRARY_PATH environment variable as requested
+if [[ ":$LD_LIBRARY_PATH:" != *":$WSL_LIB:"* ]]; then
+    echo "WARNING: LD_LIBRARY_PATH environment variable does not contain $WSL_LIB."
+    echo "Current LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+    echo "Note: System-wide configuration via ld.so.conf (above) should be sufficient for most applications."
+    echo "To fix manually for current user, add this to ~/.bashrc:"
+    echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$WSL_LIB"
+else
+    echo "SUCCESS: LD_LIBRARY_PATH environment variable contains $WSL_LIB."
+fi
+
 # 3. Configure nvidia-container-runtime for WSL compatibility
 # This is often needed to ensure the runtime hook picks up the WSL libraries correctly.
 CONFIG_FILE="/etc/nvidia-container-runtime/config.toml"
