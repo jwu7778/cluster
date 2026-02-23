@@ -37,4 +37,4 @@ spec:
       - name: wsl-lib
         hostPath:
           path: /usr/lib/wsl/lib
-          type: Directory
+          type: DirectoryOrCreate
