@@ -22,6 +22,10 @@ sudo apt-get install --fix-broken -y
 
 # 2. Install Stable NVIDIA Driver (535)
 echo "Installing NVIDIA Driver 535..."
+# Clean up potential PPA conflicts
+sudo rm -f /etc/apt/sources.list.d/graphics-drivers-ppa-*.list
+sudo rm -f /etc/apt/sources.list.d/graphics-drivers-ubuntu-ppa-*.list
+# Add the PPA again cleanly
 sudo add-apt-repository -y ppa:graphics-drivers/ppa
 sudo apt-get update
 sudo apt-get install -y nvidia-driver-535 nvidia-utils-535
