@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-monitor
+  labels:
+    app: gpu-monitor
+spec:
+  selector:
+    matchLabels:
+      app: gpu-monitor
+  template:
+    metadata:
+      labels:
+        app: gpu-monitor
+    spec:
+      # If using NVIDIA device plugin, this helps ensure correct runtime usage
+      # runtimeClassName: nvidia
+      hostPID: true # Sometimes needed for full visibility
+      containers:
+      - name: monitor
+        image: gpu-monitor:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true # Ensures access to GPU devices
+        env:
+        - name: BACKEND_URL
+          value: "http://backend-service:8000"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - mountPath: /usr/lib/wsl/lib
+          name: wsl-lib
+          readOnly: true
+      volumes:
+      - name: wsl-lib
+        hostPath:
+          path: /usr/lib/wsl/lib
+          type: Directory

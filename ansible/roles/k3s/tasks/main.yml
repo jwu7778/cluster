@@ -1,0 +1,6 @@
+---
+- include_tasks: master.yml
+  when: node_type == 'master'
+
+- include_tasks: worker.yml
+  when: node_type == 'worker'

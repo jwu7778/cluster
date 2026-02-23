@@ -1,0 +1,8 @@
+---
+- name: Install K3s Worker Node
+  shell: curl -sfL https://get.k3s.io | sh -
+  environment:
+    K3S_URL: "{{ k3s_url }}"
+    K3S_TOKEN: "{{ k3s_token }}"
+  args:
+    creates: /usr/local/bin/k3s-agent

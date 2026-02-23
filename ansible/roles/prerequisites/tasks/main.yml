@@ -1,0 +1,61 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install basic dependencies
+  apt:
+    name:
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+
+- name: Add NVIDIA GPG Key
+  shell: |
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+- name: Add NVIDIA Container Toolkit Repository
+  shell: |
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  args:
+    creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+- name: Update apt cache (post-repo add)
+  apt:
+    update_cache: yes
+
+- name: Install NVIDIA Container Toolkit
+  apt:
+    name:
+      - nvidia-container-toolkit
+      # nvidia-docker2 is technically deprecated in favor of the toolkit but requested by user
+    state: present
+
+- name: Configure NVIDIA Container Toolkit (Docker)
+  command: nvidia-ctk runtime configure --runtime=docker
+  ignore_errors: yes
+
+- name: Configure NVIDIA Container Toolkit (Containerd - K3s Default)
+  command: nvidia-ctk runtime configure --runtime=containerd
+  ignore_errors: yes
+
+- name: Restart containerd (if present)
+  service:
+    name: containerd
+    state: restarted
+  ignore_errors: yes
+
+- name: Execute WSL GPU Fix Script
+  script: "{{ playbook_dir }}/../scripts/check_gpu_wsl.sh"
+  register: wsl_script_output
+  when: "'WSL' in ansible_kernel or 'Microsoft' in ansible_kernel or inventory_hostname in groups['worker']"
+
+- name: Display WSL Script Output
+  debug:
+    var: wsl_script_output.stdout_lines
