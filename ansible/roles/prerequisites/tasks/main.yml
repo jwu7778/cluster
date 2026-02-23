@@ -10,7 +10,22 @@
       - curl
       - gnupg
       - lsb-release
+      - software-properties-common
     state: present
+
+- name: Add Graphics Drivers PPA (Ubuntu Desktop)
+  apt_repository:
+    repo: ppa:graphics-drivers/ppa
+    state: present
+  when: "'WSL' not in ansible_kernel and 'Microsoft' not in ansible_kernel"
+
+- name: Install NVIDIA Driver 535 (Stable LTS)
+  apt:
+    name:
+      - nvidia-driver-535
+      - nvidia-utils-535
+    state: present
+  when: "'WSL' not in ansible_kernel and 'Microsoft' not in ansible_kernel"
 
 - name: Add NVIDIA GPG Key
   shell: |
