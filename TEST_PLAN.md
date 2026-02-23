@@ -20,7 +20,7 @@ This script has been updated to aggressively handle the "Conflicting values set 
     # 1. Detect and uninstall any previous K3s installation.
     # 2. Aggressively remove all 'graphics-drivers' PPA files to fix APT errors.
     # 3. Purge old drivers and conflicting packages (libnvidia-egl-gbm1).
-    # 4. Re-add PPA, install drivers (v535), and install K3s.
+    # 4. Enable standard Ubuntu repositories (Restricted/Multiverse) and install drivers (v535).
     ./scripts/install_master.sh
     ```
 4.  **Verification:**

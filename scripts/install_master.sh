@@ -67,11 +67,16 @@ sudo apt-get install --fix-broken -y
 # --- STEP 2: INSTALL DRIVERS ---
 
 echo "=== PHASE 2: INSTALLING NVIDIA DRIVERS ==="
-echo "Installing NVIDIA Driver 535..."
+echo "Installing NVIDIA Driver 535 from Standard Ubuntu Repositories..."
 
-# Add the PPA again cleanly
-sudo add-apt-repository -y ppa:graphics-drivers/ppa
+# Ensure we have the standard repositories enabled (Restricted/Multiverse)
+# This is safer than the PPA which might push broken bleeding-edge drivers (like 575).
+sudo add-apt-repository -y restricted
+sudo add-apt-repository -y multiverse
+sudo add-apt-repository -y universe
 sudo apt-get update
+
+# Install driver from standard repos instead of PPA
 sudo apt-get install -y nvidia-driver-535 nvidia-utils-535
 
 # --- STEP 3: INSTALL CONTAINER TOOLKIT ---
