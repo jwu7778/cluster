@@ -3,11 +3,12 @@ set -e
 
 echo "Starting K3s Master (Ubuntu Desktop) Installation..."
 
-# 1. Purge problematic drivers (575)
+# 1. Purge problematic drivers and libs
 echo "Purging old NVIDIA drivers..."
 sudo apt-get update
-sudo apt-get remove --purge -y nvidia-driver-575 nvidia-dkms-575 nvidia-utils-575 || true
+sudo apt-get remove --purge -y '^nvidia-.*' '^libnvidia-.*' || true
 sudo apt-get autoremove -y
+sudo apt-get autoclean
 
 # 2. Install Stable NVIDIA Driver (535)
 echo "Installing NVIDIA Driver 535..."
