@@ -147,7 +147,7 @@ TEMPLATE_PATH="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
 # Loop until config.toml is created by K3s start
 MAX_RETRIES=30
 COUNT=0
-while [ ! -f "$CONFIG_PATH" ]; do
+while ! sudo test -f "$CONFIG_PATH"; do
   sleep 2
   COUNT=$((COUNT+1))
 
