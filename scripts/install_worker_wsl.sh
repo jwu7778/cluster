@@ -83,14 +83,40 @@ echo "=== PHASE 3: CONFIGURING RUNTIME ==="
 sudo nvidia-ctk runtime configure --runtime=containerd
 sudo systemctl restart containerd || true
 
-# --- STEP 4: INSTALL K3S AGENT & CONFIGURE FOR NVIDIA ---
+# --- STEP 4: CLEANUP & INSTALL K3S AGENT ---
 
-echo "=== PHASE 4: INSTALLING K3S AGENT ==="
+echo "=== PHASE 4: CLEANUP & INSTALL K3S AGENT ==="
 
-# Clean up previous potentially broken configuration to ensure fresh generation
-echo "Cleaning up previous K3s agent configuration templates..."
-sudo rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
-sudo rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+# 4.1 Cleanup previous installation
+echo "Checking for previous K3s agent installation..."
+
+if systemctl is-active --quiet k3s-agent; then
+    echo "Stopping running k3s-agent service..."
+    sudo systemctl stop k3s-agent
+fi
+
+if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
+    echo "Running K3s agent uninstaller..."
+    sudo /usr/local/bin/k3s-agent-uninstall.sh
+else
+    echo "Uninstaller not found. Manually cleaning up..."
+    sudo systemctl disable k3s-agent 2>/dev/null || true
+    sudo rm -f /etc/systemd/system/k3s-agent.service
+    sudo systemctl daemon-reload
+fi
+
+echo "Removing K3s data directories to ensure fresh registration..."
+# Remove state data (including old certificates causing 401 errors)
+sudo rm -rf /var/lib/rancher/k3s
+sudo rm -rf /etc/rancher/k3s
+# Remove runtime data
+sudo rm -rf /run/k3s
+sudo rm -rf /run/flannel
+
+echo "Cleanup complete."
+
+# 4.2 Install K3s Agent
+echo "Installing K3s Agent..."
 
 # Install K3s Agent
 curl -sfL https://get.k3s.io | K3S_URL=$K3S_URL K3S_TOKEN=$K3S_TOKEN sh -
