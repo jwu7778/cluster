@@ -27,6 +27,9 @@ spec:
         env:
           - name: FAIL_ON_INIT_ERROR
             value: "false"
+          # Inject WSL library path for compatibility
+          - name: LD_LIBRARY_PATH
+            value: "/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -34,7 +37,16 @@ spec:
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/device-plugins
+        # Mount WSL libraries into container
+        - name: wsl-lib
+          mountPath: /usr/lib/wsl/lib
+          readOnly: true
       volumes:
       - name: device-plugin
         hostPath:
           path: /var/lib/kubelet/device-plugins
+      # Define WSL library path (DirectoryOrCreate avoids crash on non-WSL nodes)
+      - name: wsl-lib
+        hostPath:
+          path: /usr/lib/wsl/lib
+          type: DirectoryOrCreate
