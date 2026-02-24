@@ -1,91 +1,61 @@
 #!/bin/bash
-set -e
+# check_gpu_wsl.sh - Diagnostics for WSL GPU Setup
 
-echo "Starting WSL GPU Configuration Check..."
+echo "=== WSL GPU Diagnostic Tool ==="
 
-# 1. Check for /dev/dxg (DirectX Graphics Kernel)
-if [ ! -e "/dev/dxg" ]; then
-    echo "WARNING: /dev/dxg not found. This implies the WSL2 instance may not have GPU passthrough enabled or drivers are missing on the Windows host."
+FAIL=0
+
+# Check 1: /dev/dxg (DirectX GPU device for WSL2)
+if [ -e "/dev/dxg" ]; then
+    echo "[PASS] /dev/dxg found."
 else
-    echo "SUCCESS: /dev/dxg found."
+    echo "[FAIL] /dev/dxg NOT found. Ensure you are running on WSL2 with NVIDIA Drivers installed on Windows."
+    FAIL=1
 fi
 
-# 2. Check and Configure Library Path for WSL
+# Check 2: WSL Libraries (/usr/lib/wsl/lib)
 WSL_LIB="/usr/lib/wsl/lib"
-
-# Check if the directory actually exists (it should be mounted from Windows)
-if [ ! -d "$WSL_LIB" ]; then
-    echo "ERROR: $WSL_LIB directory not found. Ensure you are running on WSL2 with NVIDIA drivers installed on Windows."
-    # We proceed, but this is critical.
+if [ -d "$WSL_LIB" ]; then
+    echo "[PASS] $WSL_LIB directory found."
+else
+    echo "[FAIL] $WSL_LIB NOT found. Verify NVIDIA Driver installation on Windows."
+    FAIL=1
 fi
 
-# We use ldconfig to manage library paths persistently
+# Check 3: LD Configuration (ld.so.conf)
 LD_CONF="/etc/ld.so.conf.d/wsl.conf"
-if [ ! -f "$LD_CONF" ]; then
-    echo "Configuring ld.so.conf for WSL libraries..."
-    echo "$WSL_LIB" | sudo tee "$LD_CONF"
-    sudo ldconfig
-    echo "SUCCESS: Added $WSL_LIB to ldconfig."
+if [ -f "$LD_CONF" ] && grep -q "$WSL_LIB" "$LD_CONF"; then
+    echo "[PASS] ld.so.conf configured correctly for WSL libraries."
 else
-    if grep -q "$WSL_LIB" "$LD_CONF"; then
-        echo "SUCCESS: $WSL_LIB is already configured in $LD_CONF."
+    echo "[WARN] ld.so.conf might be missing $WSL_LIB. Run 'sudo ldconfig' after adding it."
+    # Not a critical fail if libraries are in standard path, but usually required for WSL
+fi
+
+# Check 4: NVIDIA Container Toolkit
+if command -v nvidia-ctk &> /dev/null; then
+    echo "[PASS] NVIDIA Container Toolkit installed."
+else
+    echo "[FAIL] NVIDIA Container Toolkit NOT installed."
+    FAIL=1
+fi
+
+# Check 5: K3s Agent Configuration
+CONFIG_TMPL="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+if [ -f "$CONFIG_TMPL" ]; then
+    if grep -q "plugins.*nvidia" "$CONFIG_TMPL"; then
+        echo "[PASS] K3s Agent config.toml.tmpl contains NVIDIA runtime configuration."
     else
-        echo "Updating $LD_CONF..."
-        echo "$WSL_LIB" | sudo tee -a "$LD_CONF"
-        sudo ldconfig
-        echo "SUCCESS: Appended $WSL_LIB to $LD_CONF and refreshed ldconfig."
+        echo "[WARN] K3s Agent config.toml.tmpl exists but might be missing NVIDIA configuration."
     fi
-fi
-
-# Check LD_LIBRARY_PATH environment variable as requested
-if [[ ":$LD_LIBRARY_PATH:" != *":$WSL_LIB:"* ]]; then
-    echo "WARNING: LD_LIBRARY_PATH environment variable does not contain $WSL_LIB."
-    echo "Current LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
-    echo "Note: System-wide configuration via ld.so.conf (above) should be sufficient for most applications."
-    echo "To fix manually for current user, add this to ~/.bashrc:"
-    echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$WSL_LIB"
 else
-    echo "SUCCESS: LD_LIBRARY_PATH environment variable contains $WSL_LIB."
+    echo "[INFO] K3s Agent config.toml.tmpl not found (K3s might not be installed or configured yet)."
 fi
 
-# 3. Configure nvidia-container-runtime for WSL compatibility
-# This is often needed to ensure the runtime hook picks up the WSL libraries correctly.
-CONFIG_FILE="/etc/nvidia-container-runtime/config.toml"
-CONFIG_DIR=$(dirname "$CONFIG_FILE")
-
-if [ ! -d "$CONFIG_DIR" ]; then
-    sudo mkdir -p "$CONFIG_DIR"
-fi
-
-# We will create a basic config if it doesn't exist, or ensure specific flags if it does.
-# For WSL, we usually want to ensure we accept the mounted devices.
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Creating default nvidia-container-runtime config for WSL..."
-    sudo tee "$CONFIG_FILE" > /dev/null <<EOF
-disable-require = false
-# sw-name = "Unknown"
-# docker-runtimes = ["runc"]
-
-[nvidia-container-cli]
-# root = "/run/nvidia/driver"
-# path = "/usr/bin/nvidia-container-cli"
-environment = []
-# debug = "/var/log/nvidia-container-toolkit.log"
-# load-kmods = true
-# no-cgroups = false
-# user = "root:video"
-ldconfig = "@/sbin/ldconfig"
-
-[nvidia-container-runtime]
-# debug = "/var/log/nvidia-container-runtime.log"
-log-level = "info"
-
-# specific for WSL usage if needed
-mode = "auto"
-EOF
-    echo "SUCCESS: Created $CONFIG_FILE"
+echo "=== Diagnostic Complete ==="
+if [ $FAIL -eq 1 ]; then
+    echo "Summary: Issues detected. Please run 'scripts/install_worker_wsl.sh' to fix them."
+    exit 1
 else
-    echo "SUCCESS: $CONFIG_FILE exists."
+    echo "Summary: System looks ready for GPU workloads."
+    exit 0
 fi
-
-echo "WSL GPU Check & Configuration Complete."

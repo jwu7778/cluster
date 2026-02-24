@@ -79,7 +79,7 @@ fi
 
 echo "=== PHASE 3: CONFIGURING RUNTIME ==="
 
-# Generate default config for system containerd
+# Generate default config for system containerd (optional but good practice)
 sudo nvidia-ctk runtime configure --runtime=containerd
 sudo systemctl restart containerd || true
 
@@ -87,21 +87,57 @@ sudo systemctl restart containerd || true
 
 echo "=== PHASE 4: INSTALLING K3S AGENT ==="
 
+# Clean up previous potentially broken configuration to ensure fresh generation
+echo "Cleaning up previous K3s agent configuration templates..."
+sudo rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+sudo rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+
 # Install K3s Agent
 curl -sfL https://get.k3s.io | K3S_URL=$K3S_URL K3S_TOKEN=$K3S_TOKEN sh -
 
-echo "Configuring K3s to use NVIDIA runtime via config.toml.tmpl..."
-sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/
+echo "Waiting for K3s to generate default config.toml..."
+CONFIG_PATH="/var/lib/rancher/k3s/agent/etc/containerd/config.toml"
+TEMPLATE_PATH="/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
 
-# Create config.toml.tmpl to register nvidia runtime
-# Using runc v2
-cat <<EOF | sudo tee /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+# Loop until config.toml is created by K3s start
+MAX_RETRIES=30
+COUNT=0
+while [ ! -f "$CONFIG_PATH" ]; do
+  sleep 2
+  COUNT=$((COUNT+1))
+  if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
+    echo "ERROR: Timeout waiting for K3s to generate config.toml"
+    exit 1
+  fi
+done
+
+echo "Copying generated config.toml to config.toml.tmpl as base..."
+sudo cp "$CONFIG_PATH" "$TEMPLATE_PATH"
+
+echo "Appending NVIDIA runtime configuration..."
+
+# Determine if we are using new containerd config format (1.5+) or old
+if grep -q "io.containerd.grpc.v1.cri" "$TEMPLATE_PATH"; then
+  echo "Detected containerd 1.5+ configuration format."
+  cat <<EOF | sudo tee -a "$TEMPLATE_PATH"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
+  runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
+  BinaryName = "/usr/bin/nvidia-container-runtime"
+  SystemdCgroup = true
+EOF
+else
+  echo "Detected legacy containerd configuration format."
+  cat <<EOF | sudo tee -a "$TEMPLATE_PATH"
+
 [plugins.cri.containerd.runtimes.nvidia]
   runtime_type = "io.containerd.runc.v2"
 [plugins.cri.containerd.runtimes.nvidia.options]
   BinaryName = "/usr/bin/nvidia-container-runtime"
   SystemdCgroup = true
 EOF
+fi
 
 echo "Restarting K3s Agent to apply runtime changes..."
 sudo systemctl restart k3s-agent
