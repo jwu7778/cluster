@@ -1,87 +1,69 @@
-# Test Plan: Distributed GPU Computing Platform
+# GPU Worker Verification Guide
 
-## 1. Master Node Installation (Ubuntu 24.04 Desktop)
+Great news! Your WSL node `ailab` is now `Ready` in the cluster. This means the K3s agent is successfully talking to the master.
 
-This script has been updated to aggressively handle the "Conflicting values set for option Signed-By" error caused by duplicate PPA definitions.
+To confirm that the **GPU** is actually usable by Kubernetes (and not just visible to the OS), follow these steps:
 
-### Steps:
-1.  **Pull Latest Changes:**
-    ```bash
-    cd ~/cluster
-    git pull
-    ```
-2.  **Make Scripts Executable:**
-    ```bash
-    chmod +x scripts/*.sh
-    ```
-3.  **Run Master Installation:**
-    ```bash
-    # This script will now:
-    # 1. Detect and uninstall any previous K3s installation.
-    # 2. Aggressively remove all 'graphics-drivers' PPA files to fix APT errors.
-    # 3. Purge old drivers and conflicting packages (libnvidia-egl-gbm1).
-    # 4. Enable standard Ubuntu repositories (Restricted/Multiverse) and install drivers (v535).
-    ./scripts/install_master.sh
-    ```
-4.  **Verification:**
-    *   Check if K3s is running: `sudo systemctl status k3s`
-    *   Check NVIDIA driver: `nvidia-smi`
-    *   Check if node is ready: `sudo kubectl get nodes`
+## Step 1: Deploy the NVIDIA Device Plugin
+Kubernetes needs a "Device Plugin" to advertise GPU resources to the scheduler. Without this, your node has a GPU, but Kubernetes doesn't know it can schedule pods on it.
 
-## 2. Worker Node Installation (WSL2)
+Run this on your **Master Node**:
+```bash
+kubectl apply -f k8s/nvidia-device-plugin.yaml
+```
 
-### Steps:
-1.  **Prepare Environment:**
-    Ensure you are inside your WSL2 instance (Ubuntu).
-2.  **Run Worker Installation:**
-    Using the Token and URL provided by the Master installation output:
-    ```bash
-    export K3S_URL=https://<MASTER_IP>:6443
-    export K3S_TOKEN=<TOKEN>
+Wait about 30 seconds, then check if the plugin pods are running:
+```bash
+kubectl get pods -n kube-system -l app=nvidia-device-plugin-daemonset
+```
+You should see one pod for each node (master and worker).
 
-    # This script will:
-    # 1. Run check_gpu_wsl.sh to verify /dev/dxg and configure ld.so.conf
-    # 2. Install NVIDIA Container Toolkit
-    # 3. Join the cluster
-    ./scripts/install_worker_wsl.sh
-    ```
-3.  **Verification (on Master):**
-    *   Run `sudo kubectl get nodes` and ensure the WSL node appears as `Ready`.
+## Step 2: Verify Node Capacity
+Once the plugin is running, check if the node is advertising `nvidia.com/gpu` resources:
 
-## 3. GPU Passthrough Verification
+```bash
+kubectl describe node ailab | grep "Allocatable" -A 5
+```
+You should see a line like:
+```
+  nvidia.com/gpu:  1
+```
 
-### On Worker Node (WSL):
-1.  **Check Hardware Access:**
-    ```bash
-    ls -l /dev/dxg
-    # Should show the device file
-    ```
-2.  **Check Library Path:**
-    ```bash
-    ldconfig -p | grep wsl
-    # Should show libraries in /usr/lib/wsl/lib
-    ```
+## Step 3: Run a Test Job
+Now, let's run a real workload that requests a GPU and runs `nvidia-smi`.
 
-### On Master Node (Cluster Check):
-1.  **Deploy a Test Pod:**
-    Create a file `gpu-test.yaml`:
-    ```yaml
-    apiVersion: v1
-    kind: Pod
-    metadata:
-      name: gpu-test
-    spec:
-      containers:
-      - name: cuda-container
-        image: nvidia/cuda:11.8.0-base-ubuntu22.04
-        command: ["nvidia-smi"]
-        resources:
-          limits:
-            nvidia.com/gpu: 1
-    ```
-2.  **Run Test:**
-    ```bash
-    sudo kubectl apply -f gpu-test.yaml
-    sudo kubectl logs gpu-test
-    # Output should show the GPU table
-    ```
+Run this on your **Master Node**:
+```bash
+kubectl apply -f k8s/test-gpu-job.yaml
+```
+
+## Step 4: Check Results
+Wait a few seconds for the job to complete.
+
+1. **Check the Pod Status:**
+   ```bash
+   kubectl get pods
+   ```
+   You should see a pod named `gpu-test-job-xxxxx` with status `Completed`.
+
+2. **View the Logs:**
+   Replace `gpu-test-job-xxxxx` with the actual pod name from above:
+   ```bash
+   kubectl logs gpu-test-job-xxxxx
+   ```
+
+   **Success Criteria:**
+   If everything is working, you will see the standard `nvidia-smi` table output showing your GPU (e.g., GeForce RTX 4090 or similar) inside the container.
+
+---
+
+## Troubleshooting
+
+- **If the pod stays in `Pending` state:**
+  - This usually means no node has available GPU capacity.
+  - Re-check **Step 2**. If `nvidia.com/gpu` is 0 or missing, the Device Plugin isn't working or the Runtime config on the worker is still incorrect.
+  - On the WSL worker, run `scripts/verify_gpu_runtime.sh` to double-check the local config.
+
+- **If the pod fails with `Error` or `CrashLoopBackOff`:**
+  - Check `kubectl describe pod gpu-test-job-xxxxx`.
+  - Check `kubectl logs gpu-test-job-xxxxx`.
