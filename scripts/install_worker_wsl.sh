@@ -75,45 +75,64 @@ else
     echo "NVIDIA Container Toolkit already installed."
 fi
 
-# --- STEP 3: CONFIGURE RUNTIME FOR WSL ---
-
-echo "=== PHASE 3: CONFIGURING RUNTIME ==="
-
-# Generate default config for system containerd (optional but good practice)
-sudo nvidia-ctk runtime configure --runtime=containerd
-sudo systemctl restart containerd || true
+# --- STEP 3: CONFIGURE RUNTIME (SKIPPED FOR K3S EMBEDDED) ---
+# Previous versions configured system containerd here.
+# Since K3s uses its own embedded containerd, we skip system-wide configuration
+# to avoid confusion and conflicts. The K3s config is handled in Phase 4.
 
 # --- STEP 4: CLEANUP & INSTALL K3S AGENT ---
 
 echo "=== PHASE 4: CLEANUP & INSTALL K3S AGENT ==="
 
-# 4.1 Cleanup previous installation
-echo "Checking for previous K3s agent installation..."
+# Function for aggressive cleanup
+force_cleanup_k3s() {
+    echo "Starting aggressive K3s cleanup..."
 
-if systemctl is-active --quiet k3s-agent; then
-    echo "Stopping running k3s-agent service..."
-    sudo systemctl stop k3s-agent
-fi
+    # Stop the service if running
+    if systemctl is-active --quiet k3s-agent; then
+        echo "Stopping running k3s-agent service..."
+        sudo systemctl stop k3s-agent || echo "Warning: Failed to stop k3s-agent"
+    fi
 
-if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
-    echo "Running K3s agent uninstaller..."
-    sudo /usr/local/bin/k3s-agent-uninstall.sh
-else
-    echo "Uninstaller not found. Manually cleaning up..."
-    sudo systemctl disable k3s-agent 2>/dev/null || true
-    sudo rm -f /etc/systemd/system/k3s-agent.service
-    sudo systemctl daemon-reload
-fi
+    # Run official cleanup scripts first
+    if [ -f "/usr/local/bin/k3s-killall.sh" ]; then
+        echo "Running k3s-killall.sh..."
+        sudo /usr/local/bin/k3s-killall.sh || echo "Warning: k3s-killall.sh failed"
+    fi
 
-echo "Removing K3s data directories to ensure fresh registration..."
-# Remove state data (including old certificates causing 401 errors)
-sudo rm -rf /var/lib/rancher/k3s
-sudo rm -rf /etc/rancher/k3s
-# Remove runtime data
-sudo rm -rf /run/k3s
-sudo rm -rf /run/flannel
+    if [ -f "/usr/local/bin/k3s-agent-uninstall.sh" ]; then
+        echo "Running k3s-agent-uninstall.sh..."
+        sudo /usr/local/bin/k3s-agent-uninstall.sh || echo "Warning: k3s-agent-uninstall.sh failed"
+    else
+        echo "Uninstaller not found. Manually cleaning up service files..."
+        sudo systemctl disable k3s-agent 2>/dev/null || true
+        sudo rm -f /etc/systemd/system/k3s-agent.service
+        sudo systemctl daemon-reload
+    fi
 
-echo "Cleanup complete."
+    # Aggressive unmount loop
+    echo "Checking for remaining mounts in K3s directories..."
+    # List mounts, filter for k3s-related paths, sort by length (longest first) to unmount nested mounts properly
+    mount | grep -E '/var/lib/kubelet|/var/lib/rancher/k3s|/run/k3s|/run/flannel' | awk '{print $3}' | sort -r | while read -r mnt; do
+        echo "Unmounting $mnt..."
+        sudo umount -f "$mnt" || echo "Warning: Failed to force unmount $mnt"
+    done
+
+    echo "Removing K3s data directories..."
+    # Remove state data
+    sudo rm -rf /var/lib/rancher/k3s || echo "Warning: Failed to remove /var/lib/rancher/k3s"
+    sudo rm -rf /etc/rancher/k3s || echo "Warning: Failed to remove /etc/rancher/k3s"
+    # Remove runtime data
+    sudo rm -rf /run/k3s || echo "Warning: Failed to remove /run/k3s"
+    sudo rm -rf /run/flannel || echo "Warning: Failed to remove /run/flannel"
+    # Remove kubelet data (often busy)
+    sudo rm -rf /var/lib/kubelet || echo "Warning: Failed to remove /var/lib/kubelet"
+
+    echo "Cleanup phase finished."
+}
+
+# Execute cleanup
+force_cleanup_k3s
 
 # 4.2 Install K3s Agent
 echo "Installing K3s Agent..."
@@ -131,8 +150,20 @@ COUNT=0
 while [ ! -f "$CONFIG_PATH" ]; do
   sleep 2
   COUNT=$((COUNT+1))
+
+  # Check if service died
+  if ! systemctl is-active --quiet k3s-agent; then
+      echo "ERROR: k3s-agent service is not running! Check logs below:"
+      echo "--- journalctl output ---"
+      sudo journalctl -u k3s-agent -n 50 --no-pager
+      echo "-------------------------"
+      exit 1
+  fi
+
   if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
     echo "ERROR: Timeout waiting for K3s to generate config.toml"
+    echo "Dumping recent logs:"
+    sudo journalctl -u k3s-agent -n 50 --no-pager
     exit 1
   fi
 done
@@ -141,15 +172,16 @@ echo "Copying generated config.toml to config.toml.tmpl as base..."
 sudo cp "$CONFIG_PATH" "$TEMPLATE_PATH"
 
 echo "Appending NVIDIA runtime configuration..."
+# Using the standard format strictly as requested.
 
 # Determine if we are using new containerd config format (1.5+) or old
 if grep -q "io.containerd.grpc.v1.cri" "$TEMPLATE_PATH"; then
   echo "Detected containerd 1.5+ configuration format."
   cat <<EOF | sudo tee -a "$TEMPLATE_PATH"
 
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia"]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
   runtime_type = "io.containerd.runc.v2"
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes."nvidia".options]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
   BinaryName = "/usr/bin/nvidia-container-runtime"
   SystemdCgroup = true
 EOF
