@@ -29,6 +29,12 @@ You should see a line like:
   nvidia.com/gpu:  1
 ```
 
+If you do NOT see `nvidia.com/gpu`, run the debug script:
+```bash
+bash scripts/debug_gpu_cluster.sh
+```
+Look for error messages in the logs like "no devices found" or configuration errors.
+
 ## Step 3: Run a Test Job
 Now, let's run a real workload that requests a GPU and runs `nvidia-smi`.
 
@@ -63,6 +69,7 @@ Wait a few seconds for the job to complete.
   - This usually means no node has available GPU capacity.
   - Re-check **Step 2**. If `nvidia.com/gpu` is 0 or missing, the Device Plugin isn't working or the Runtime config on the worker is still incorrect.
   - On the WSL worker, run `scripts/verify_gpu_runtime.sh` to double-check the local config.
+  - Run `bash scripts/debug_gpu_cluster.sh` to capture logs from the cluster.
 
 - **If the pod fails with `Error` or `CrashLoopBackOff`:**
   - Check `kubectl describe pod gpu-test-job-xxxxx`.
