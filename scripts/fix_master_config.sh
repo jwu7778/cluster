@@ -10,7 +10,8 @@ echo "Waiting for K3s to generate default config.toml..."
 # Wait up to 30s
 MAX_RETRIES=15
 COUNT=0
-while [ ! -f "$CONFIG_PATH" ]; do
+# Use sudo test -f to check root-owned file existence
+while ! sudo test -f "$CONFIG_PATH"; do
   sleep 2
   COUNT=$((COUNT+1))
   if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
@@ -25,7 +26,8 @@ sudo cp "$CONFIG_PATH" "$TEMPLATE_PATH"
 echo "Appending NVIDIA runtime configuration..."
 
 # Determine if we are using new containerd config format (1.5+) or old
-if grep -q "io.containerd.grpc.v1.cri" "$TEMPLATE_PATH"; then
+# Use sudo grep to read the root-owned file
+if sudo grep -q "io.containerd.grpc.v1.cri" "$TEMPLATE_PATH"; then
   echo "Detected containerd 1.5+ configuration format."
   cat <<EOF | sudo tee -a "$TEMPLATE_PATH"
 
