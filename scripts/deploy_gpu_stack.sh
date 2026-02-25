@@ -13,6 +13,13 @@ fi
 
 # 1. Apply the patched NVIDIA Device Plugin (Crucial for WSL support)
 if [ -f "k8s/nvidia-device-plugin.yaml" ]; then
+    echo "Cleaning up old NVIDIA Device Plugin..."
+    kubectl delete -f k8s/nvidia-device-plugin.yaml 2>/dev/null || true
+    kubectl delete ds nvidia-device-plugin-daemonset -n kube-system 2>/dev/null || true
+
+    echo "Waiting for cleanup..."
+    sleep 5
+
     echo "Applying patched NVIDIA Device Plugin..."
     kubectl apply -f k8s/nvidia-device-plugin.yaml
 else
@@ -47,3 +54,4 @@ fi
 echo "Deployment commands sent. Checking status..."
 sleep 5
 kubectl get pods -A | grep nvidia
+echo "If the pod crashes, please run: ./scripts/fetch_crash_logs.sh"

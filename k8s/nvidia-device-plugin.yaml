@@ -20,7 +20,7 @@ spec:
       - operator: Exists
       priorityClassName: system-node-critical
       containers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.16.2
         name: nvidia-device-plugin-ctr
         env:
           - name: FAIL_ON_INIT_ERROR
@@ -29,9 +29,7 @@ spec:
           - name: LD_LIBRARY_PATH
             value: "/host/usr/lib:/host/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
+          privileged: true
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/device-plugins
