@@ -27,7 +27,7 @@ spec:
             value: "false"
           # Inject WSL library path for compatibility
           - name: LD_LIBRARY_PATH
-            value: "/usr/lib/x86_64-linux-gnu:/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+            value: "/host/usr/lib:/host/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -43,6 +43,10 @@ spec:
         - name: host-lib
           mountPath: /usr/lib/x86_64-linux-gnu
           readOnly: true
+        # Mount generic host /usr/lib for broader compatibility
+        - name: host-usr-lib
+          mountPath: /host/usr/lib
+          readOnly: true
       volumes:
       - name: device-plugin
         hostPath:
@@ -56,4 +60,9 @@ spec:
       - name: host-lib
         hostPath:
           path: /usr/lib/x86_64-linux-gnu
+          type: DirectoryOrCreate
+      # Define generic host /usr/lib
+      - name: host-usr-lib
+        hostPath:
+          path: /usr/lib
           type: DirectoryOrCreate
