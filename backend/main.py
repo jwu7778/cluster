@@ -1,106 +1,107 @@
-import time
-import uuid
-from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from kubernetes import client, config
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import subprocess
+import csv
+import io
+import uvicorn
+import os
 
 app = FastAPI()
 
-# In-memory storage for node status
-node_statuses: Dict[str, dict] = {}
+# Add CORS middleware to allow requests from frontend (React usually on port 3000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For dev only, restrict in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Try to load Kubernetes configuration
-try:
-    config.load_incluster_config()
-    print("Loaded in-cluster configuration.")
-except config.ConfigException:
+def get_nvidia_smi():
     try:
-        config.load_kube_config()
-        print("Loaded kube-config.")
-    except config.ConfigException:
-        print("Warning: Could not load Kubernetes configuration. Job submission will fail.")
+        # Run nvidia-smi with CSV output for easier parsing
+        # Querying utilization.gpu and memory.used as requested
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=index,name,utilization.gpu,memory.used,temperature.gpu', '--format=csv,noheader,nounits'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True
+        )
+        output = result.stdout.strip()
 
-class GPUStatus(BaseModel):
-    utilization_gpu: int
-    memory_used: int
-    temperature: Optional[int] = None
-    node_name: str
-    timestamp: float
-
-class JobRequest(BaseModel):
-    image: str
-    command: List[str]
-    gpu_count: int = 1
+        gpus = []
+        if output:
+            reader = csv.reader(io.StringIO(output))
+            for row in reader:
+                if len(row) >= 5:
+                    gpus.append({
+                        "index": row[0].strip(),
+                        "name": row[1].strip(),
+                        "utilization": int(row[2].strip()),
+                        "memory_used": int(row[3].strip()),
+                        "temperature": int(row[4].strip())
+                    })
+        return gpus
+    except subprocess.CalledProcessError as e:
+        print(f"nvidia-smi error: {e.stderr}")
+        return []
+    except FileNotFoundError:
+        print("nvidia-smi not found (running in mock mode?)")
+        # Return mock data for testing if no GPU present
+        return [
+            {"index": "0", "name": "Mock GPU 1", "utilization": 45, "memory_used": 1024, "temperature": 65},
+            {"index": "1", "name": "Mock GPU 2", "utilization": 12, "memory_used": 512, "temperature": 55}
+        ] if os.getenv("MOCK_GPU", "false").lower() == "true" else []
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "service": "GPU Dispatcher"}
+    return {"status": "ok", "service": "gpu-monitor-backend"}
+
+from pydantic import BaseModel
+from typing import List, Dict
+
+# In-memory store for GPU status from all nodes
+# Format: { "node_name": { "gpus": [...], "last_updated": timestamp } }
+cluster_status: Dict[str, dict] = {}
+
+class GPUStatus(BaseModel):
+    index: str
+    name: str
+    utilization: int
+    memory_used: int
+    temperature: int
+
+class NodeReport(BaseModel):
+    node: str
+    gpus: List[GPUStatus]
+    gpu_count: int
 
 @app.post("/report")
-def report_status(status: GPUStatus):
+def report_status(report: NodeReport):
     """
-    Receives GPU status updates from nodes.
+    Receives GPU status reports from worker nodes via the DaemonSet agent.
     """
-    node_statuses[status.node_name] = status.dict()
-    return {"received": True}
+    cluster_status[report.node] = report.dict()
+    return {"status": "received", "node": report.node}
 
 @app.get("/status")
 def get_status():
     """
-    Returns the aggregated status of all nodes.
+    Returns the aggregated status of all nodes in the cluster.
     """
-    return node_statuses
+    # If no agents have reported yet, return local status as fallback
+    if not cluster_status:
+        local_gpus = get_nvidia_smi()
+        hostname = os.uname().nodename
+        return [{
+            "node": hostname,
+            "gpus": local_gpus,
+            "gpu_count": len(local_gpus)
+        }]
 
-@app.post("/submit")
-def submit_job(job: JobRequest):
-    """
-    Submits a K8s Job requesting GPU resources.
-    """
-    job_name = f"gpu-job-{uuid.uuid4().hex[:8]}"
+    # Return list of all node statuses
+    return list(cluster_status.values())
 
-    # Define the container with GPU limits
-    container = client.V1Container(
-        name="gpu-container",
-        image=job.image,
-        command=job.command,
-        resources=client.V1ResourceRequirements(
-            limits={"nvidia.com/gpu": str(job.gpu_count)}
-        )
-    )
-
-    # Define the Job spec
-    template = client.V1PodTemplateSpec(
-        metadata=client.V1ObjectMeta(labels={"app": "gpu-job"}),
-        spec=client.V1PodSpec(
-            restart_policy="Never",
-            containers=[container]
-        )
-    )
-
-    spec = client.V1JobSpec(
-        template=template,
-        backoff_limit=2,
-        ttl_seconds_after_finished=600  # Clean up after 10 mins
-    )
-
-    job_obj = client.V1Job(
-        api_version="batch/v1",
-        kind="Job",
-        metadata=client.V1ObjectMeta(name=job_name),
-        spec=spec
-    )
-
-    try:
-        batch_v1 = client.BatchV1Api()
-        api_response = batch_v1.create_namespaced_job(
-            body=job_obj,
-            namespace="default"
-        )
-        print(f"Job created: {job_name}")
-        return {"job_id": job_name, "status": "submitted"}
-    except Exception as e:
-        print(f"Exception when calling BatchV1Api->create_namespaced_job: {e}")
-        # Return mock response if K8s is not available (for testing UI without cluster)
-        # return {"job_id": job_name, "status": "mock-submitted", "error": str(e)}
-        raise HTTPException(status_code=500, detail=str(e))
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

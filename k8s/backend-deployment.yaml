@@ -1,27 +1,45 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
-  namespace: default
+  name: gpu-monitor-backend
   labels:
-    app: backend
+    app: gpu-monitor-backend
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
-      app: backend
+      app: gpu-monitor-backend
   template:
     metadata:
       labels:
-        app: backend
+        app: gpu-monitor-backend
     spec:
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: backend
-        image: backend:latest
+        image: gpu-monitor-backend:latest
         imagePullPolicy: IfNotPresent
+        env:
+          - name: MOCK_GPU
+            value: "false"
+        resources:
+          limits:
+            nvidia.com/gpu: 1  # Request 1 GPU per replica
         ports:
         - containerPort: 8000
-        env:
-        # Example: if backend needs to talk to K8s API
-        - name: KUBERNETES_SERVICE_HOST
-          value: "kubernetes.default.svc"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-monitor-backend-service
+spec:
+  selector:
+    app: gpu-monitor-backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer

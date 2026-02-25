@@ -29,7 +29,7 @@ spec:
             value: "false"
           # Inject WSL library path for compatibility
           - name: LD_LIBRARY_PATH
-            value: "/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+            value: "/usr/lib/x86_64-linux-gnu:/usr/lib/wsl/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -41,6 +41,10 @@ spec:
         - name: wsl-lib
           mountPath: /usr/lib/wsl/lib
           readOnly: true
+        # Mount standard Linux libraries (for Master node)
+        - name: host-lib
+          mountPath: /usr/lib/x86_64-linux-gnu
+          readOnly: true
       volumes:
       - name: device-plugin
         hostPath:
@@ -49,4 +53,9 @@ spec:
       - name: wsl-lib
         hostPath:
           path: /usr/lib/wsl/lib
+          type: DirectoryOrCreate
+      # Define standard Linux library path (DirectoryOrCreate avoids crash on WSL nodes)
+      - name: host-lib
+        hostPath:
+          path: /usr/lib/x86_64-linux-gnu
           type: DirectoryOrCreate
