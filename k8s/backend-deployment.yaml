@@ -5,7 +5,7 @@ metadata:
   labels:
     app: gpu-monitor-backend
 spec:
-  replicas: 3
+  replicas: 1  # Use 1 replica for in-memory state consistency (MVP)
   selector:
     matchLabels:
       app: gpu-monitor-backend
@@ -14,10 +14,6 @@ spec:
       labels:
         app: gpu-monitor-backend
     spec:
-      tolerations:
-      - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule
       containers:
       - name: backend
         image: gpu-monitor-backend:latest
@@ -25,9 +21,6 @@ spec:
         env:
           - name: MOCK_GPU
             value: "false"
-        resources:
-          limits:
-            nvidia.com/gpu: 1  # Request 1 GPU per replica
         ports:
         - containerPort: 8000
 ---

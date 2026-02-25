@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-monitor-frontend
+  labels:
+    app: gpu-monitor-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-monitor-frontend
+  template:
+    metadata:
+      labels:
+        app: gpu-monitor-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: gpu-monitor-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-monitor-frontend-service
+spec:
+  selector:
+    app: gpu-monitor-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: LoadBalancer
