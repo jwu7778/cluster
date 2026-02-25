@@ -17,9 +17,7 @@ spec:
         app: nvidia-device-plugin-daemonset
     spec:
       tolerations:
-      - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule
+      - operator: Exists
       priorityClassName: system-node-critical
       containers:
       - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
