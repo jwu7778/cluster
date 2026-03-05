@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 function App() {
   const [nodes, setNodes] = useState([]);
 
   useEffect(() => {
-    // In a real app, this would poll the backend service.
-    // For now, assume the backend is exposed on port 30001 or similar.
-    // We'll mock the data for this first pass.
-
     const fetchStatus = async () => {
       try {
-        // The URL needs to point to the backend in development (localhost:8000).
-        // In production (Kubernetes), we'd use a relative path or configured endpoint.
-        const response = await fetch('http://localhost:8000/status');
+        const response = await fetch(`${API_BASE_URL}/status`);
         const data = await response.json();
 
         // Backend now returns an array of nodes, so we set it directly.
