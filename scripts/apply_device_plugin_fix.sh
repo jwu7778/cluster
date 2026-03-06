@@ -14,7 +14,7 @@ if [ ! -z "$NOT_READY_NODES" ]; then
 fi
 
 echo "Updating DaemonSet configuration..."
-kubectl apply -f k8s/nvidia-device-plugin.yaml
+kubectl apply -f infrastructure/nvidia-device-plugin.yaml
 
 echo "Waiting for rollout to complete..."
 kubectl rollout status daemonset -n kube-system nvidia-device-plugin-daemonset

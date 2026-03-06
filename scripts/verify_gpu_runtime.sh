@@ -42,4 +42,4 @@ fi
 
 echo "=== Verification Complete ==="
 echo "If the runtime is listed above, try submitting the test job:"
-echo "kubectl apply -f k8s/test-gpu-job.yaml"
+echo "kubectl apply -f infrastructure/test-gpu-job.yaml"

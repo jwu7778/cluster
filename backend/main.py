@@ -54,7 +54,7 @@ def get_nvidia_smi():
             {"index": "1", "name": "Mock GPU 2", "utilization": 12, "memory_used": 512, "temperature": 55}
         ] if os.getenv("MOCK_GPU", "false").lower() == "true" else []
 
-@app.get("/")
+@app.get("/api/health")
 def read_root():
     return {"status": "ok", "service": "gpu-monitor-backend"}
 
@@ -85,7 +85,7 @@ def report_status(report: NodeReport):
     cluster_status[report.node] = report.dict()
     return {"status": "received", "node": report.node}
 
-@app.get("/status")
+@app.get("/api/status")
 def get_status():
     """
     Returns the aggregated status of all nodes in the cluster.
@@ -102,6 +102,26 @@ def get_status():
 
     # Return list of all node statuses
     return list(cluster_status.values())
+
+# Serve React App
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Check if frontend build exists
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/build")
+if os.path.isdir(frontend_path):
+    app.mount("/static", StaticFiles(directory=os.path.join(frontend_path, "static")), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_react(full_path: str):
+        # Serve index.html for unknown paths to support React Router,
+        # or specific files if requested from the root (like manifest.json, favicon.ico)
+        file_path = os.path.join(frontend_path, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_path, "index.html"))
+else:
+    print(f"Warning: Frontend build directory not found at {frontend_path}. UI will not be served.")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

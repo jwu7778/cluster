@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nvidia-container-toolkit \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.monitor.txt .
+RUN pip install --no-cache-dir -r requirements.monitor.txt
 
 COPY monitor_agent.py .
 
